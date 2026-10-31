@@ -1,64 +1,55 @@
-// The Reflecting Pool
-// p5.js 1.11.3 + ml5.js v1 (handPose). No build step.
-// Keys (for you): M mouse mode | D debug | T machine readings | F fullscreen
+const RES = 4;
+const DAMPING = 0.985;
+const WATER_ALPHA = 0.8;
 
-// ---------- Tuning ----------
-const RES = 4;                 // ripple cell size in px. Bigger = faster, softer
-const DAMPING = 0.985;         // how long ripples last (0.97 short, 0.99 long)
-const WATER_ALPHA = 0.8;       // below 1 leaves short trails
-
-// Letters: every particle is a letter from the oracle's lines
-const NUM_PARTICLES = 3500;    // pool of letters (not all visible at once)
-const LETTERS_IDLE = 80;       // letters drifting while nobody is at the pool
-const LETTERS_ACTIVE = 1800;   // letters drifting once a hand is detected
-const NUM_DOTS = 7000;         // plain particles, always flowing (lower first if fps drops)
-const GLYPH_PX = 12;           // size of the drifting letters
-const LIFE_MIN = 300;          // frames a fragment lives before fading out
+const NUM_PARTICLES = 3500;
+const LETTERS_IDLE = 80;
+const LETTERS_ACTIVE = 1800;
+const NUM_DOTS = 7000;
+const GLYPH_PX = 12;
+const LIFE_MIN = 300;
 const LIFE_MAX = 600;
-const FLOW_CELL = 40;          // flow field resolution in px
+const FLOW_CELL = 40;
 const NOISE_SCALE = 0.005;
-const RIDE = 0.008;            // how much ripples push letters along
-const DISPLACE = 0.06;         // how far ripples visually bend the letters
-const CREST_K = 0.0025;         // how much ripple crests enlarge and brighten letters
+const RIDE = 0.008;
+const DISPLACE = 0.06;
+const CREST_K = 0.0025;
 
-// Thermal color field: cool water underneath, the hand adds heat
 const FIELD_STOPS = [
-  [0.00, [3, 5, 24]],          // deep navy
-  [0.30, [18, 32, 140]],       // blue
-  [0.50, [55, 80, 235]],       // bright blue
-  [0.65, [125, 90, 230]],      // violet
-  [0.80, [240, 105, 140]],     // coral
-  [1.00, [255, 195, 160]]      // peach
+  [0.00, [3, 5, 24]],
+  [0.30, [18, 32, 140]],
+  [0.50, [55, 80, 235]],
+  [0.65, [125, 90, 230]],
+  [0.80, [240, 105, 140]],
+  [1.00, [255, 195, 160]]
 ];
-const FIELD_BASE = 0.42;       // strength of the slow cool blobs (0 = black water)
-const HEAT_DECAY = 0.985;      // how long the hand's heat lingers
+const FIELD_BASE = 0.42;
+const HEAT_DECAY = 0.985;
 
-// Answer, spelled by letters pulled out of the water
-const ANSWER_PX = 34;          // letter size once in place
-const ANSWER_TRACK = 8;        // letter spacing once settled (starts wider)
-const ANSWER_MAX_W = 0.8;      // wrap width as a share of the screen
+const ANSWER_PX = 34;
+const ANSWER_TRACK = 8;
+const ANSWER_MAX_W = 0.8;
 
-// Idle hand, drawn by letters gathering
-const HAND_STEP = 9;           // spacing of letters inside the hand
+const HAND_STEP = 9;
 const HAND_MAX_PTS = 1100;
 
-const PINCH_ON = 0.35;         // pinch closes below this gap / hand-size ratio
-const PINCH_OFF = 0.6;         // pinch opens above this
-const RELEASE_MS = 200;        // pinch must stay open this long to count as a release (ignores flicker)
-const ANSWER_LEAVE_MS = 3000;  // answer stays until the next pinch, or until the hand has been gone this long
+const PINCH_ON = 0.35;
+const PINCH_OFF = 0.6;
+const RELEASE_MS = 200;
+const ANSWER_LEAVE_MS = 3000;
 
-// How the water follows the hand
-const DRAG_R = 170;            // reach of the hand in px
-const DRAG_K = 0.25;           // how much of the hand's motion the water picks up
-const PART_K = 0.15;            // gentle parting around the fingertip
-const MOMENTUM = 0.92;         // how long the water keeps moving after the hand passes (0.9 short, 0.97 long)
+const DRAG_R = 170;
+const DRAG_K = 0.25;
+const PART_K = 0.15;
+const MOMENTUM = 0.92;
 const MAX_DRIFT = 8;
-const HOLD_LOST_MS = 900;      // a pinch can hide the fingers from the camera: keep the answer this long if tracking drops
-const SMOOTH = 0.45;           // fingertip smoothing (lower = smoother, more lag)
-const HAND_GRACE_MS = 300;     // keep a lost hand alive this long
-const IDLE_DELAY_MS = 6000;    // no hand this long = back to idle (long, so tracking dropouts don't bring the hand back)
-const REVEAL_MS = 1800;        // time for an answer to fully form
-const SINK_MS = 2200;          // time for an answer to dissolve
+const HOLD_LOST_MS = 900;
+const SMOOTH = 0.45;
+const HAND_GRACE_MS = 300;
+const IDLE_DELAY_MS = 6000;
+const READ_MS = 1100;
+const REVEAL_MS = 1800;
+const SINK_MS = 2200;
 
 const GLYPH_FONT = '"Space Grotesk", "Helvetica Neue", Arial, sans-serif';
 const MONO = '"IBM Plex Mono", Menlo, monospace';
@@ -66,7 +57,6 @@ const MONO = '"IBM Plex Mono", Menlo, monospace';
 const IDLE_LINES = ["Hold a question in your mind", "Then reach over the water"];
 const PINCH_HINT = "Pinch to look beneath";
 
-// ---------- Oracle corpus (edit freely; more lines = more variety) ----------
 const CORPUS = [
   "Wait for dusk", "Don't listen to your mind", "Listen to no one", "You already know", "Let go",
   "Look again", "Still waters lie", "Currents are changing", "Drift gently", "Be careful. Words echo",
@@ -78,7 +68,7 @@ const CORPUS = [
   "It was never about the question", "Change arrives unseen", "The path is dissolving",
   "It unfolds regardless", "You asked too late", "This is your sign", "The answer is yes",
   "The answer is no", "You will know soon", "Rest. It is coming",
-  // added lines in the same voice
+
   "The water remembers what you forgot", "Ask again when the surface is still", "The answer is already moving",
   "You will not like what rises", "What sinks is not lost", "The current knows your name",
   "Look past your own reflection", "Your hands already decided", "The tide turns without you",
@@ -94,7 +84,6 @@ const CORPUS = [
   "Someone is already deciding", "Every ripple returns to the shore", "Hold still and see"
 ];
 
-// Default ghost hand (used until a real hand has been seen). MediaPipe point order.
 const DEFAULT_HAND = [
   [0, 0.45],
   [-0.13, 0.36], [-0.24, 0.24], [-0.32, 0.12], [-0.39, 0.02],
@@ -107,26 +96,23 @@ const FINGERS = [[0, 1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16
 const FINGER_W = [1.15, 1, 1.05, 0.95, 0.8];
 const PALM = [0, 1, 5, 9, 13, 17];
 
-// ---------- State ----------
 let video, handPose;
 let hands = [];
 
-let cols, rows, cur, prev, heatF, waterG;    // ripple + heat
-let SX = 0, SY = 0;                           // last slope sample
+let cols, rows, cur, prev, heatF, waterG;
+let SX = 0, SY = 0;
 let flowCols, flowRows, flowVX, flowVY, fieldN;
-let LUT;                                      // color lookup for the field
+let LUT;
 
-// letters
 let partX, partY, partO, partC, partAge, partLife, partA, partS, inForm, rX, rY, rB;
 let spawnCursor = 0, aliveLetters = 0;
 let dotX, dotY, dotO, dotR, dotRY, dotB, dotShade;
 let partCrowd;
-const OCC_W = 8, OCC_H = 14;         // overlap grid: one letter per cell stays bright
+const OCC_W = 8, OCC_H = 14;
 let occ, occCols, occRows;
 let LINE_TOKENS = [];
 const ALPHA_LEVELS = 6;
 
-// glyph atlas: every character pre-drawn once, then copied (much faster than drawing text)
 const ATLAS_PX = 48, ATLAS_FONT_PX = 38;
 const atlas = document.createElement("canvas");
 let atlasChars = [], charIndex = {}, atlasAdv = [];
@@ -151,7 +137,6 @@ let lastMouseMove = -99999;
 let chain = {}, startCounts = {};
 const END = "__END__";
 
-// ---------- p5 ----------
 function preload() {
   handPose = ml5.handPose({ flipped: true });
 }
@@ -171,7 +156,7 @@ function setup() {
   LINE_TOKENS = CORPUS.map(tokenize).filter(t => t.length);
   buildLUT();
   buildAtlas();
-  // redraw the letters once the web font has loaded
+
   if (document.fonts) {
     document.fonts.load(`500 ${ATLAS_FONT_PX}px "Space Grotesk"`).then(buildAtlas).catch(() => {});
     document.fonts.load(`10px "IBM Plex Mono"`).catch(() => {});
@@ -179,6 +164,8 @@ function setup() {
 
   initAll();
   buildMarkov(CORPUS);
+  startAudio();
+  buildOracle();
   background(0);
 }
 
@@ -200,6 +187,7 @@ function draw() {
   stepRipple();
   renderWater();
   updateAnswer(now);
+  updateAudio();
   updateHandForm(now);
 
   drawWater();
@@ -207,12 +195,13 @@ function draw() {
   drawLetters();
   drawPrompts(now);
   drawHandMarks();
+  drawReading(now);
   drawAnswerData();
 
+  drawSoundHint();
   if (debug) drawDebug();
 }
 
-// ---------- Hand input ----------
 function toCanvas(kp) {
   return {
     x: map(kp.x, 0, video.width, 0, width),
@@ -224,7 +213,7 @@ function readHand(now) {
   if (mouseMode) {
     if (now - lastMouseMove < 3000 || mouseIsPressed) {
       updateHand(mouseX, mouseY, mouseX - 30, mouseY + 30, mouseIsPressed ? 0 : 1, now);
-      
+
     } else {
       hand.present = false;
     }
@@ -263,11 +252,11 @@ function updateHand(ix, iy, tx, ty, ratio, now) {
   jitter.push(dist(ix, iy, hand.x, hand.y));
   if (jitter.length > 30) jitter.shift();
   session.stir += hand.speed;
+  session.stirQ += hand.speed;
 }
 
-// ---------- Session loop ----------
 function startSession(now) {
-  session = { start: now, lastRelease: null, stir: 0, pinches: 0, closed: false };
+  session = { start: now, lastRelease: null, stir: 0, stirQ: 0, pinches: 0, closed: false, recent: [] };
   jitter = [];
 }
 
@@ -277,13 +266,12 @@ function updateSession(now) {
   idleA = lerp(idleA, idle ? 1 : 0, 0.05);
 }
 
-// ---------- Pinch ----------
 function updatePinch(now) {
   if (!hand.present) {
     if (pinch.on) releasePinch(now);
     return;
   }
-  // any closing motion counts: a pinch or a grab
+
   const closing = hand.ratio < PINCH_ON;
   const open = hand.ratio > PINCH_OFF;
   if (!open) openSince = now;
@@ -295,7 +283,6 @@ function updatePinch(now) {
   }
 }
 
-// a grab reveals at the palm, a pinch between thumb and index
 function setGrabPoint() {
   if (mouseMode) { pinch.x = hand.x; pinch.y = hand.y; }
   else { pinch.x = (hand.x + hand.tx) / 2; pinch.y = (hand.y + hand.ty) / 2; }
@@ -305,15 +292,18 @@ function startPinch(now) {
   pinch.on = true;
   setGrabPoint();
   drop(pinch.x, pinch.y, 24, 300);
+  sfxPinch();
   depositHeat(pinch.x, pinch.y, 140, 0.8);
   if (!session || session.closed) return;
 
   session.pinches++;
   const r = takeReading(now);
-  const o = consult(r);
+  const o = consult(r, session.recent.slice(-8));
+  session.recent.push(o.key);
+  session.stirQ = 0;
   answer = {
-    text: o.text, reading: r, temp: o.temp, confidence: o.confidence,
-    level: 0, from: 0, state: "rising", t0: now
+    text: o.text, reading: r, temp: o.temp, confidence: o.confidence, label: o.label,
+    level: 0, from: 0, state: "rising", t0: now + READ_MS, readT0: now
   };
   if (answerForm) releaseForm(answerForm);
   answerForm = buildAnswerForm(answer, pinch.x, pinch.y);
@@ -322,30 +312,21 @@ function startPinch(now) {
 function releasePinch(now) {
   pinch.on = false;
   if (session) session.lastRelease = now;
-  if (answer) answer.releasedAt = now;   // it stays a while, then sinks (see updateAnswer)
+  if (answer) answer.releasedAt = now;
 }
 
-// ---------- The algorithm reads the hand ----------
 function takeReading(now) {
   const since = session.lastRelease !== null ? session.lastRelease : session.start;
   const meanJ = jitter.length ? jitter.reduce((a, b) => a + b, 0) / jitter.length : 0;
   return {
     hesitation: (now - since) / 1000,
     unrest: constrain(meanJ / 8, 0, 1),
-    depth: constrain(pinch.y / height, 0, 1),
-    drift: constrain(pinch.x / width, 0, 1),
-    stir: constrain(session.stir / (width * 3), 0, 1)
+    depth: constrain((pinch.on ? pinch.y : hand.y) / height, 0, 1),
+    drift: constrain((pinch.on ? pinch.x : hand.x) / width, 0, 1),
+    stir: constrain(session.stirQ / (width * 1.5), 0, 1)
   };
 }
 
-function consult(r) {
-  const temp = 0.6 + r.unrest * 1.4;                         // restless hand = wilder answer
-  const maxWords = 4 + floor(constrain(r.hesitation, 0, 5)); // longer hesitation = longer answer
-  const out = generate(mulberry32(hashReading(r)), temp, maxWords);
-  return { text: out.text, confidence: out.confidence, temp };
-}
-
-// Same gesture, same answer: the reading is the seed.
 function hashReading(r) {
   let h = 2166136261;
   const parts = [round(r.hesitation * 2), round(r.unrest * 10), round(r.drift * 6), round(r.depth * 4), round(r.stir * 5)];
@@ -365,7 +346,152 @@ function mulberry32(a) {
   };
 }
 
-// ---------- Markov chain ----------
+const ORACLE = [
+  ["Wait for dusk", "H+"], ["Now is not the time", "H+"], ["Rest. It is coming", "H+ U+"],
+  ["You will know soon", "H+"], ["Patience is the deeper water", "H+ D+"], ["Wait. Then wait again", "H+"],
+  ["The answer is in the waiting", "H+"], ["Not yet. The water is still moving", "H+ S+"],
+  ["Ask again when the surface is still", "H+ U+ D-"], ["You asked too late", "H+ S+"],
+  ["You will know it when it stills", "H+ U+"], ["The truth will reveal itself", "H+ U-"],
+  ["It unfolds regardless", "H+ S+"],
+
+  ["Choose with certainty", "H-"], ["You already know", "H- U-"], ["Think less", "H- U+"],
+  ["You've already begun", "H- S+"], ["You are already in motion", "H- S+"], ["Begin again", "H- S+"],
+  ["This is your sign", "H-"], ["Your hands already decided", "H- U-"], ["The answer is yes", "H-"],
+  ["Yes, but not the way you think", "H- D+"], ["Trust what returns", "H- D-"],
+  ["Go where the current is quiet", "H- U+"], ["Turn back once, then never again", "H- S+"],
+  ["Listen to no one", "H- U-"], ["Don't listen to your mind", "H- U+"],
+
+  ["Let go", "U+"], ["Let the water settle first", "U+ H+"], ["Hold still and see", "U+"],
+  ["Stillness is a direction", "U+ S-"], ["Drift gently", "U+ S-"], ["What you fear is only a reflection", "U+ D-"],
+  ["Speak less and the answer grows", "U+"], ["Be careful. Words echo", "U+ D-"],
+  ["The question is heavier than the answer", "U+ D+"],
+
+  ["You are seen", "U-"], ["You will be seen", "U- H+"], ["Look again", "U- D-"], ["All signs point inward", "U- D+"],
+  ["Look past your own reflection", "U- D-"], ["What you seek is seeking you", "U- H+"],
+  ["It is closer than it looks", "U- D-"], ["The sign is in your hands", "U- H-"],
+  ["You were never alone in this", "U-"], ["The current knows your name", "U- S+"],
+
+  ["Something waits beneath", "D+"], ["What sinks is not lost", "D+"], ["The surface lies. The depth does not", "D+"],
+  ["The path is under the water", "D+"], ["Let it sink", "D+ U+"], ["You will not like what rises", "D+ H+"],
+  ["Something is changing beneath you", "D+ S+"], ["The water remembers what you forgot", "D+"],
+  ["Still waters lie", "D+ S-"],
+
+  ["It circles back", "D- S+"], ["Every ripple returns to the shore", "D- S+"], ["You've been here before", "D-"],
+  ["It has already happened", "D- H-"], ["Ripple becomes wave", "D- S+"], ["You are asking the wrong shore", "D- H-"],
+  ["What moves stays", "D- S-"],
+
+  ["The current has passed you by", "S+ H+"], ["The tide turns without you", "S+"],
+  ["Everything you lost is downstream", "S+ D+"], ["The path is dissolving", "S+"], ["A door has closed", "S+ H+"],
+  ["One path splits", "S+ H-"], ["Currents are changing", "S+"], ["Change arrives unseen", "S+ D+"],
+  ["The answer is already moving", "S+ H-"], ["The answer drifts toward you", "S- H+"],
+  ["What you seek has already passed through you", "S+ U-"],
+
+  ["It is not known", ""], ["It was never about the question", ""], ["Someone is already deciding", "H+"],
+  ["The answer is no", "H+"], ["No, and that is a mercy", "H+ U+"]
+];
+
+const ALLOW_REMIX = false;
+const REMIX_PENALTY = 0.25;
+const AXES = ["H", "U", "D", "S"];
+const TRAIT_WORDS = { "H+": "HESITANT", "H-": "CERTAIN", "U+": "RESTLESS", "U-": "STILL",
+  "D+": "DEEP", "D-": "SURFACE", "S+": "STIRRED", "S-": "CALM" };
+
+let oracleLines = [], trigrams = {};
+
+function tagVector(tags) {
+  const v = [0, 0, 0, 0];
+  for (const t of tags.split(" ").filter(Boolean)) v[AXES.indexOf(t[0])] += t[1] === "+" ? 1 : -1;
+  return v;
+}
+
+function buildOracle() {
+  oracleLines = ORACLE.map(([text, tags]) => ({ text, words: tokenize(text), vec: tagVector(tags) }));
+  trigrams = {};
+  oracleLines.forEach((l, li) => {
+    const w = ["^", "^", ...l.words, "$"];
+    for (let i = 2; i < w.length; i++) {
+      const key = w[i - 2] + " " + w[i - 1];
+      (trigrams[key] = trigrams[key] || []).push({ next: w[i], line: li });
+    }
+  });
+}
+
+function remix(rng) {
+  const words = [], used = [];
+  let a = "^", b = "^";
+  for (let n = 0; n < 12; n++) {
+    const opts = trigrams[a + " " + b];
+    if (!opts) return null;
+    const pick = opts[floor(rng() * opts.length)];
+    used.push(pick.line);
+    if (pick.next === "$") break;
+    words.push(pick.next);
+    a = b; b = pick.next;
+  }
+  if (words.length < 3 || words.length > 9) return null;
+  const vec = [0, 0, 0, 0];
+  for (const li of used) for (let k = 0; k < 4; k++) vec[k] += oracleLines[li].vec[k] / used.length;
+  return { words, vec, remix: new Set(used).size > 1 };
+}
+
+function profileOf(r) {
+  return [
+    constrain(map(r.hesitation, 1, 5, -1, 1), -1, 1),
+    constrain(map(r.unrest, 0.15, 0.6, -1, 1), -1, 1),
+    constrain(map(r.depth, 0.2, 0.8, -1, 1), -1, 1),
+    constrain(map(r.stir, 0, 1, -1, 1), -1, 1)
+  ];
+}
+
+function cosine(a, b) {
+  let d = 0, na = 0, nb = 0;
+  for (let k = 0; k < 4; k++) { d += a[k] * b[k]; na += a[k] * a[k]; nb += b[k] * b[k]; }
+  return na && nb ? d / Math.sqrt(na * nb) : 0;
+}
+
+function readingLabel(p) {
+  const parts = p.map((v, k) => ({ v, k })).filter(o => Math.abs(o.v) > 0.3)
+    .sort((x, y) => Math.abs(y.v) - Math.abs(x.v)).slice(0, 3)
+    .map(o => TRAIT_WORDS[AXES[o.k] + (o.v > 0 ? "+" : "-")]);
+  return parts.length ? parts.join(" · ") : "UNCLEAR";
+}
+
+function consult(r, recent) {
+  const rng = mulberry32(hashReading(r));
+  const p = profileOf(r);
+  const seen = new Set(recent || []);
+  const cands = new Map();
+  for (const l of oracleLines) cands.set(l.words.join(" "), { words: l.words, vec: l.vec, remix: false, text: l.text });
+  if (ALLOW_REMIX) {
+    for (let i = 0; i < 80; i++) {
+      const c = remix(rng);
+      if (c && c.remix && !cands.has(c.words.join(" "))) cands.set(c.words.join(" "), c);
+    }
+  }
+
+  const list = [];
+  for (const [key, c] of cands) {
+    if (seen.has(key)) continue;
+    const fit = cosine(p, c.vec);
+    const strength = Math.min(1, Math.hypot(...c.vec) / 1.5);
+    list.push({ key, c, fit, score: fit * (0.6 + 0.4 * strength) - (c.remix ? REMIX_PENALTY : 0) });
+  }
+  const temp = 0.08 + 0.18 * constrain(r.unrest, 0, 1);
+  const mx = Math.max(...list.map(o => o.score));
+  let total = 0;
+  for (const o of list) { o.w = Math.exp((o.score - mx) / temp); total += o.w; }
+  let x = rng() * total, chosen = list[list.length - 1];
+  for (const o of list) { x -= o.w; if (x <= 0) { chosen = o; break; } }
+
+  let text = chosen.c.text || chosen.c.words.join(" ");
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  return {
+    text, key: chosen.key, temp,
+    confidence: constrain(0.5 + 0.5 * chosen.fit, 0, 1),
+    label: readingLabel(p), remix: chosen.c.remix
+  };
+}
+
 function tokenize(line) {
   return line.toLowerCase().replace(/[’]/g, "'").replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
 }
@@ -418,13 +544,12 @@ function generate(rng, temp, maxWords) {
   }
 
   const logSum = probs.reduce((a, p) => a + Math.log(p), 0);
-  const confidence = Math.exp(logSum / probs.length);  // geometric mean of each choice
+  const confidence = Math.exp(logSum / probs.length);
   let text = words.join(" ");
   text = text.charAt(0).toUpperCase() + text.slice(1);
   return { text, confidence };
 }
 
-// ---------- Ripple water + heat ----------
 function initRipple() {
   cols = ceil(width / RES);
   rows = ceil(height / RES);
@@ -478,14 +603,15 @@ function depositHeat(cx, cy, radius, amount) {
 
 function stirWater() {
   if (hand.present) {
-    // moving finger leaves a wake; a still finger pulses gentle rings
     const s = min(hand.speed * 3, 100) + 12 * sin(frameCount * 0.3);
     drop(hand.x, hand.y, 12, s);
-    // faster hand = hotter water
+
     depositHeat(hand.x, hand.y, 70, 0.03 + min(hand.speed, 40) * 0.012);
   }
   if (idleA > 0.5 && random() < 0.03) {
-    drop(random(width), random(height), 8, 80);  // light rain while idle
+    const rx = random(width), ry = random(height);
+    drop(rx, ry, 8, 80);
+    if (random() < 0.35) sfxDrop(0.05);
   }
 }
 
@@ -499,7 +625,6 @@ function stepRipple() {
   const t = cur; cur = prev; prev = t;
 }
 
-// Field value per cell = slow cool blobs + heat + ripple light, then mapped through the palette.
 function renderWater() {
   waterG.loadPixels();
   const px = waterG.pixels;
@@ -548,7 +673,6 @@ function slopeAt(x, y) {
   SY = cur[i - cols] - cur[i + cols];
 }
 
-// ---------- Flow field (coarse grid, updated every few frames) ----------
 function initFlow() {
   flowCols = ceil(width / FLOW_CELL) + 2;
   flowRows = ceil(height / FLOW_CELL) + 2;
@@ -569,15 +693,14 @@ function updateFlow() {
       flowVX[i] = cos(a);
       flowVY[i] = sin(a);
       const n = noise(px * 0.0025 + 100, py * 0.0025, t * 0.6);
-      fieldN[i] = constrain((n - 0.3) / 0.4, 0, 1);   // stretch noise into clear blobs
+      fieldN[i] = constrain((n - 0.3) / 0.4, 0, 1);
       dotShade[i] = noise(px * 0.01, py * 0.01);
     }
   }
 }
 
-// ---------- Glyph atlas ----------
 function buildAtlas() {
-  const set = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ'");
+  const set = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ'.,");
   for (const t of LINE_TOKENS) for (const w of t) for (const ch of w) set.add(ch);
   atlasChars = [...set];
   atlas.width = atlasChars.length * ATLAS_PX;
@@ -600,7 +723,6 @@ function glyph(ctx, ci, x, y, px) {
   ctx.drawImage(atlas, ci * ATLAS_PX, 0, ATLAS_PX, ATLAS_PX, x - s / 2, y - s / 2, s, s);
 }
 
-// ---------- Letters: the water itself ----------
 function initParticles() {
   const n = NUM_PARTICLES;
   partX = new Float32Array(n); partY = new Float32Array(n); partO = new Float32Array(n);
@@ -624,7 +746,6 @@ function initParticles() {
   }
 }
 
-// ---------- Dots: the original particle water, moved by the same ripples ----------
 function drawDots() {
   const cxm = width / 2, cym = height / 2;
   const f = frameCount * 0.1;
@@ -686,7 +807,7 @@ function nextFree() {
   for (let tries = 0; tries < NUM_PARTICLES; tries++) {
     const i = spawnCursor;
     spawnCursor = (spawnCursor + 1) % NUM_PARTICLES;
-    if (!inForm[i] && partAge[i] >= partLife[i]) return i;   // a letter that has already faded
+    if (!inForm[i] && partAge[i] >= partLife[i]) return i;
   }
   return -1;
 }
@@ -697,14 +818,13 @@ function occAt(x, y) {
   return cy * occCols + cx;
 }
 
-// A fragment of 1 to 3 words from one oracle line surfaces somewhere in the water.
 function spawnPhrase(randomAge) {
   const words = LINE_TOKENS[floor(random(LINE_TOKENS.length))];
   const start = floor(random(words.length));
   const phrase = words.slice(start, start + 1 + floor(random(3))).join(" ");
   const life = random(LIFE_MIN, LIFE_MAX);
   const age = randomAge ? random(life) : 0;
-  // look for a clear stretch of water so new words don't land on old ones
+
   const len = phrase.length * GLYPH_PX * 0.62;
   let x = 0, y = 0, count = 0;
   for (let tries = 0; tries < 8; tries++) {
@@ -735,7 +855,6 @@ function spawnPhrase(randomAge) {
 function drawLetters() {
   if (frameCount % 3 === 0) updateFlow();
 
-  // a few letters while idle; the stream fills once a hand is detected
   const want = session && !session.closed ? LETTERS_ACTIVE : LETTERS_IDLE;
   let spawned = 0, guard = 0;
   const perFrame = want === LETTERS_ACTIVE ? 60 : 4;
@@ -770,7 +889,6 @@ function drawLetters() {
     vx += sx * RIDE;
     vy += sy * RIDE;
 
-    // the hand drags the water with it; the water keeps moving after the hand passes
     let mx = partVX[i] * MOMENTUM, my = partVY[i] * MOMENTUM;
     if (hand.present) {
       const dx = x - hand.x, dy = y - hand.y;
@@ -794,13 +912,11 @@ function drawLetters() {
     rX[i] = x + sx * DISPLACE;
     rY[i] = y + sy * DISPLACE + wave;
 
-    // letters drifting behind the answer fade so it stays legible
     if (answer && answer.box && !inForm[i]) {
       const b = answer.box;
       if (x > b.cx - b.w / 2 - 30 && x < b.cx + b.w / 2 + 30 && y > b.y - 30 && y < b.y + b.h + 80) a *= 1 - 0.85 * answer.level;
     }
 
-    // overlap: the first letter in a cell stays bright, others dim until they drift apart
     if (!inForm[i]) {
       const k = occAt(rX[i], rY[i]);
       let crowdTarget = 1;
@@ -820,7 +936,6 @@ function drawLetters() {
   pullForm(handForm, handForm ? handForm.level : 0);
   pullForm(answerForm, answer ? answer.level : 0);
 
-  // draw the free letters in a few alpha batches
   const ctx = drawingContext;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
@@ -835,7 +950,6 @@ function drawLetters() {
   ctx.restore();
 }
 
-// ---------- Formations: letters leave the current to draw a hand or spell an answer ----------
 function makeForm(kind, targets) {
   const n = targets.length;
   return {
@@ -855,15 +969,15 @@ function pullForm(form, level) {
     k = k * k * (3 - 2 * k);
     form.k[j] = k;
     if (k <= 0.001) continue;
-    rB[i] = 255;   // drawn by drawForm instead
+    rB[i] = 255;
     let tx = form.tx[j], ty = form.ty[j];
-    if (form.kind === "answer") tx = form.cx + (tx - form.cx) * (1 + (1 - k) * 0.6);  // spacing tightens as it settles
+    if (form.kind === "answer") tx = form.cx + (tx - form.cx) * (1 + (1 - k) * 0.6);
     slopeAt(tx, ty);
     tx += constrain(SX * 0.04, -3, 3) + Math.sin(t + form.ph[j]) * 0.8;
     ty += constrain(SY * 0.04, -3, 3) + Math.cos(t * 0.8 + form.ph[j]) * 0.8;
     rX[i] += (tx - rX[i]) * k;
     rY[i] += (ty - rY[i]) * k;
-    if (k > 0.98) { partX[i] = rX[i]; partY[i] = rY[i]; }   // when released, it flows on from here
+    if (k > 0.98) { partX[i] = rX[i]; partY[i] = rY[i]; }
   }
 }
 
@@ -879,7 +993,6 @@ function drawForm(ctx, form) {
   }
 }
 
-// Give letters back to the current; they fade out over the next second.
 function releaseForm(form) {
   for (let j = 0; j < form.n; j++) {
     const i = form.idx[j];
@@ -888,7 +1001,6 @@ function releaseForm(form) {
   }
 }
 
-// The answer: for each letter, find the nearest matching letter already in the water.
 function buildAnswerForm(a, px, py) {
   const text = a.text.toUpperCase();
   const words = text.split(" ");
@@ -896,7 +1008,6 @@ function buildAnswerForm(a, px, py) {
   const advOf = ch => (charIndex[ch] !== undefined ? atlasAdv[charIndex[ch]] : 0.6) * ANSWER_PX + ANSWER_TRACK;
   const maxW = width * ANSWER_MAX_W;
 
-  // wrap into lines
   const lines = [[]];
   let lineW = 0;
   for (const w of words) {
@@ -950,14 +1061,12 @@ function buildAnswerForm(a, px, py) {
   return form;
 }
 
-// ---------- Idle hand drawn by gathering letters ----------
 function ghostPoints() {
   const size = height * 0.45;
   const cx = width / 2, cy = height * 0.55;
   return DEFAULT_HAND.map(([x, y]) => ({ x: cx + x * size, y: cy + y * size }));
 }
 
-// Filled hand shape: thick rounded strokes for fingers, palm and wrist.
 function paintHand(ctx, pts, sc) {
   const palmLen = dist(pts[0].x, pts[0].y, pts[9].x, pts[9].y);
   const fw = palmLen * 0.24;
@@ -994,7 +1103,6 @@ function buildHandForm() {
   paintHand(mctx, pts, sc);
   const data = mctx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
 
-  // letter grid inside the hand, in reading order, written with the oracle's own lines
   const stepX = GLYPH_PX * 0.68, stepY = HAND_STEP * 1.25;
   const text = LINE_TOKENS.map(t => t.join(" ")).join("   ");
   let ti = floor(random(text.length));
@@ -1020,11 +1128,11 @@ function buildHandForm() {
     if (partAge[i] >= partLife[i]) { partX[i] = random(width); partY[i] = random(height); }
     partC[i] = targets[j].ci;
     partAge[i] = 30;
-    partLife[i] = 30 + random(120, 360);      // after release it drifts this long, then fades
+    partLife[i] = 30 + random(120, 360);
     form.idx[j] = i;
     form.tx[j] = targets[j].x;
     form.ty[j] = targets[j].y;
-    form.ch[j] = -1;                 // keep its own letter
+    form.ch[j] = -1;
     form.px[j] = GLYPH_PX * 1.05;
     form.delay[j] = random(0.6);
     form.ph[j] = random(TWO_PI);
@@ -1038,14 +1146,16 @@ function updateHandForm() {
   if (!handForm && idleA > 0.5 && !hand.present) handForm = buildHandForm();
   if (!handForm) return;
   handForm.level = target;
-  if (frameCount % 120 === 0 && target > 0.8) drop(handForm.tip.x, handForm.tip.y, 14, 150);
+  if (frameCount % 120 === 0 && target > 0.8) {
+    drop(handForm.tip.x, handForm.tip.y, 14, 150);
+    sfxDrop(0.07);
+  }
   if (hand.present && target <= 0.001) {
     releaseForm(handForm);
     handForm = null;
   }
 }
 
-// ---------- Prompts ----------
 function capsText(str, x, y, px, alpha, track) {
   const ctx = drawingContext;
   ctx.save();
@@ -1073,7 +1183,6 @@ function drawPrompts(now) {
 
 }
 
-// Fingertip and thumb marks that draw together as you pinch: teaches the gesture
 function drawHandMarks() {
   if (!hand.present) return;
   const c = constrain(map(hand.ratio, PINCH_OFF + 0.4, PINCH_ON, 0, 1), 0, 1);
@@ -1093,13 +1202,48 @@ function drawHandMarks() {
   }
 }
 
-// ---------- Answer timing + machine data ----------
+function drawReading(now) {
+  if (!answer || !answer.box || answer.state !== "rising") return;
+  const t = now - answer.readT0;
+  const fadeOut = 1 - constrain((now - answer.t0) / 500, 0, 1);
+  if (fadeOut <= 0) return;
+  const traits = answer.label.split(" · ");
+  const step = READ_MS / (traits.length + 1);
+  const ctx = drawingContext;
+  ctx.save();
+  ctx.font = `500 15px ${MONO}`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "4px";
+  ctx.shadowColor = "rgba(0,2,14,0.95)";
+  ctx.shadowBlur = 10;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const y = answer.box.y + answer.box.h / 2;
+
+  const dots = ".".repeat(1 + (floor(t / 180) % 3));
+  const parts = ["READING" + dots.padEnd(3, " ")];
+  traits.forEach(tr => parts.push(tr));
+  const sep = "   ";
+  const full = parts.join(sep);
+  let x = answer.box.cx - ctx.measureText(full).width / 2;
+  parts.forEach((txt, i) => {
+    const a = i === 0 ? 1 : constrain((t - i * step) / 200, 0, 1);
+    if (i > 0 && t >= i * step && (answer.traitsPlayed || 0) < i) { answer.traitsPlayed = i; sfxTrait(i - 1); }
+    ctx.fillStyle = i === 0 ? `rgba(200,220,255,${(0.95 * fadeOut).toFixed(3)})`
+                            : `rgba(255,214,120,${(a * fadeOut).toFixed(3)})`;
+    ctx.fillText(txt, x, y + (1 - a) * 6);
+    x += ctx.measureText(txt + sep).width;
+  });
+  ctx.restore();
+}
+
 function updateAnswer(now) {
   if (!answer) return;
   if (answer.state === "rising") {
-    answer.level = min(1, (now - answer.t0) / REVEAL_MS);
+    answer.level = constrain((now - answer.t0) / REVEAL_MS, 0, 1);
+    if (!answer.bellPlayed && answer.level > 0.55) { answer.bellPlayed = true; sfxBell(answer.confidence); }
     if (answer.releasedAt && !hand.present && now - lastHandTime > ANSWER_LEAVE_MS && answer.level >= 1) {
       answer.state = "sinking";
+      sfxSink();
       answer.from = 1;
       answer.t0 = now;
     }
@@ -1122,7 +1266,6 @@ function drawAnswerData() {
   const ctx = drawingContext;
   ctx.save();
 
-  // hairline that draws outward from the center
   const ruleW = b.w * ease;
   ctx.strokeStyle = `rgba(160,195,240,${(0.4 * L).toFixed(3)})`;
   ctx.lineWidth = 1;
@@ -1131,38 +1274,194 @@ function drawAnswerData() {
   ctx.lineTo(cx + ruleW / 2, ruleY);
   ctx.stroke();
 
-  // readings in small tracked capitals
   const r = answer.reading;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "3px";
+  ctx.font = `400 12px ${MONO}`;
+  ctx.fillStyle = `rgba(200,220,255,${(0.85 * L).toFixed(3)})`;
+  ctx.fillText(`READ AS  ${answer.label}`, cx, ruleY + 12);
+
   const data = [
     `HESITATION ${r.hesitation.toFixed(1)}S`,
     `UNREST ${r.unrest.toFixed(2)}`,
     `DEPTH ${r.depth.toFixed(2)}`,
-    `STIR ${r.stir.toFixed(2)}`,
-    `TEMP ${answer.temp.toFixed(2)}`
+    `STIR ${r.stir.toFixed(2)}`
   ].join("     ");
-  ctx.font = `400 10px ${MONO}`;
   if ("letterSpacing" in ctx) ctx.letterSpacing = "2px";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = `rgba(150,185,235,${(0.7 * L).toFixed(3)})`;
-  ctx.fillText(data, cx, ruleY + 12);
+  ctx.font = `400 10px ${MONO}`;
+  ctx.fillStyle = `rgba(150,185,235,${(0.55 * L).toFixed(3)})`;
+  ctx.fillText(data, cx, ruleY + 32);
 
-  // confidence as a thin bar
-  const barW = 140, bx = cx - barW / 2, by = ruleY + 36;
+  const barW = 140, bx = cx - barW / 2, by = ruleY + 56;
   ctx.fillStyle = `rgba(150,185,235,${(0.2 * L).toFixed(3)})`;
   ctx.fillRect(bx, by, barW, 1);
   ctx.fillStyle = `rgba(230,240,255,${(0.85 * L).toFixed(3)})`;
   ctx.fillRect(bx, by - 0.5, barW * answer.confidence * ease, 2);
   ctx.fillStyle = `rgba(150,185,235,${(0.7 * L).toFixed(3)})`;
-  ctx.fillText(`CONFIDENCE ${answer.confidence.toFixed(2)}`, cx, by + 10);
+  ctx.fillText(`MATCH ${round(answer.confidence * 100)}%`, cx, by + 10);
   ctx.restore();
 }
 
-// ---------- Operator controls ----------
+const SOUND_VOLUME = 0.2;
+const NOISE_VOLUME = 0.5;
+const SWISH_VOLUME = 1.2;
+const NOISE_BRIGHTNESS = 1100;
+let actx = null, master, ambGain, swishGain, swishFilter, padGain, muted = false;
+
+function startAudio() {
+  if (actx) { if (actx.state === "suspended") actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -18;
+  comp.ratio.value = 4;
+  comp.connect(actx.destination);
+  master = actx.createGain();
+  master.gain.value = SOUND_VOLUME;
+  master.connect(comp);
+
+  const len = actx.sampleRate * 4;
+  const buf = actx.createBuffer(1, len, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+    d[i] = last * 3.5;
+  }
+  const fade = 2000;
+  for (let i = 0; i < fade; i++) {
+    const k = i / fade;
+    d[len - fade + i] = d[len - fade + i] * (1 - k) + d[i] * k;
+  }
+  const src = actx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.loopStart = fade / actx.sampleRate;
+
+  const ambF = actx.createBiquadFilter();
+  ambF.type = "lowpass";
+  ambF.frequency.value = NOISE_BRIGHTNESS;
+  ambGain = actx.createGain();
+  ambGain.gain.value = NOISE_VOLUME;
+  src.connect(ambF).connect(ambGain).connect(master);
+
+  swishFilter = actx.createBiquadFilter();
+  swishFilter.type = "bandpass";
+  swishFilter.frequency.value = 700;
+  swishFilter.Q.value = 0.9;
+  swishGain = actx.createGain();
+  swishGain.gain.value = 0;
+  src.connect(swishFilter).connect(swishGain).connect(master);
+  src.start();
+
+  const padF = actx.createBiquadFilter();
+  padF.type = "lowpass";
+  padF.frequency.value = 1800;
+  padGain = actx.createGain();
+  padGain.gain.value = 0;
+  padF.connect(padGain).connect(master);
+  for (const [f, v] of [[220, 0.14], [329.6, 0.1], [440.4, 0.07], [659.3, 0.04]]) {
+    const o = actx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = f;
+    const lfo = actx.createOscillator();
+    const lg = actx.createGain();
+    lfo.frequency.value = 0.07 + Math.random() * 0.08;
+    lg.gain.value = f * 0.004;
+    lfo.connect(lg).connect(o.frequency);
+    const g = actx.createGain();
+    g.gain.value = v;
+    o.connect(g).connect(padF);
+    o.start();
+    lfo.start();
+  }
+}
+
+function audioOn() {
+  return actx && actx.state === "running" && !muted;
+}
+
+function updateAudio() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  master.gain.setTargetAtTime(muted ? 0 : SOUND_VOLUME, t, 0.2);
+  const sp = hand.present ? min(hand.speed / 25, 1) : 0;
+  swishGain.gain.setTargetAtTime(sp * SWISH_VOLUME, t, 0.08);
+  swishFilter.frequency.setTargetAtTime(700 + sp * 2200, t, 0.12);
+  ambGain.gain.setTargetAtTime(NOISE_VOLUME * (hand.present ? 1.4 : 1), t, 0.6);
+  const pad = answer && answer.level > 0 ? 0.5 + 0.4 * answer.level : hand.present ? 0.25 : 0.15;
+  padGain.gain.setTargetAtTime(pad, t, 0.5);
+}
+
+function tone(freq, dur, vol, type, when, glideTo) {
+  if (!audioOn()) return;
+  const t = actx.currentTime + (when || 0);
+  const o = actx.createOscillator();
+  const g = actx.createGain();
+  o.type = type || "sine";
+  o.frequency.setValueAtTime(freq, t);
+  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur * 0.6);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+
+function sfxDrop(vol) {
+  const f = 900 + Math.random() * 900;
+  tone(f, 0.18, vol * 3, "sine", 0, f * 0.45);
+}
+
+function sfxPinch() {
+  tone(620, 0.35, 0.35, "sine", 0, 310);
+  tone(330, 1.4, 0.15, "sine");
+}
+
+function sfxTrait(i) {
+  const f = [587.3, 659.3, 784][i % 3];
+  tone(f, 0.6, 0.2, "sine");
+  tone(f * 2, 0.3, 0.07, "sine");
+}
+
+function sfxBell(match) {
+  const f = 392 + 196 * constrain(match, 0, 1);
+  tone(f, 3.2, 0.4, "sine");
+  tone(f * 2.01, 2.2, 0.15, "sine");
+  tone(f * 3.02, 1.4, 0.07, "sine");
+  tone(f * 0.5, 3.8, 0.12, "sine");
+}
+
+function sfxSink() {
+  tone(440, 1.6, 0.15, "sine", 0, 220);
+}
+
+function mousePressed() { startAudio(); }
+function touchStarted() { startAudio(); }
+for (const ev of ["pointerdown", "keydown", "touchstart", "click"]) {
+  window.addEventListener(ev, startAudio, { capture: true });
+}
+
+function drawSoundHint() {
+  if (actx && actx.state === "running") return;
+  const ctx = drawingContext;
+  ctx.save();
+  ctx.font = `400 11px ${MONO}`;
+  if ("letterSpacing" in ctx) ctx.letterSpacing = "3px";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillStyle = "rgba(170,200,255,0.55)";
+  ctx.fillText("CLICK OR PRESS ANY KEY FOR SOUND", width - 20, height - 16);
+  ctx.restore();
+}
+
 function drawDebug() {
   noStroke();
   fill(0, 180);
-  rect(8, 8, 420, 136);
+  rect(8, 8, 520, 150);
   if (video.width) image(video, 12, 12, 160, 120);
   fill(220);
   textAlign(LEFT, TOP);
@@ -1174,14 +1473,18 @@ function drawDebug() {
     `hands ${hands.length}`,
     `pinch ${hand.ratio.toFixed(2)}`,
     `pinch ${pinch.on}`,
-    `session ${session ? ((millis() - session.start) / 1000).toFixed(0) + "s" : "idle"}`
+    `session ${session ? ((millis() - session.start) / 1000).toFixed(0) + "s" : "idle"}`,
+    `sound ${actx ? (muted ? "muted" : actx.state) : "off"}`,
+    `reads ${session && hand.present ? readingLabel(profileOf(takeReading(millis()))) : "-"}`
   ];
   text(lines.join("\n"), 180, 14);
   textFont("sans-serif");
 }
 
 function keyPressed() {
+  startAudio();
   const k = key.toLowerCase();
+  if (k === "s") muted = !muted;
   if (k === "m") { mouseMode = !mouseMode; hand.present = false; }
   if (k === "d") debug = !debug;
   if (k === "t") showMachine = !showMachine;
